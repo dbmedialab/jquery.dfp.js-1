@@ -30,6 +30,10 @@
 
     // Keep track of if we've already tried to load gpt.js before
     dfpIsLoaded = false,
+    
+    dfpDimensionPresets = {},
+    
+    dfpPrependHtml = '',
 
     // Collection of ads
     $adCollection,
@@ -119,7 +123,13 @@
 
             // adUnit id - this will use an existing id or an auto generated one.
             var adUnitID = getID($adUnit, adUnitName);
-
+            
+            if( typeof $adUnit.data('dimensions') === 'undefined'){            	
+            	var sizeMapping = $adUnit.data('size-mapping');          	            	
+            	$adUnit.attr('data-dimensions', dfpOptions.dfpDimensionPresets[sizeMapping][0]);            	
+            }            
+            
+            
             // get dimensions of the adUnit
             var dimensions = getDimensions($adUnit);
 
@@ -127,7 +137,8 @@
             $adUnit.data('existingContent', $adUnit.html());
 
             // wipe html clean ready for ad and set the default display class.
-            $adUnit.html('').addClass('display-none');
+            $adUnit.html(dfpOptions.dfpPrependHtml).addClass('display-none');
+            //$adUnit.html('').addClass('display-none');
 
             // Push commands to DFP to create ads
             window.googletag.cmd.push(function () {
@@ -278,7 +289,27 @@
                 if (typeof dfpOptions.afterAllAdsLoaded === 'function' && rendered === count) {
                     dfpOptions.afterAllAdsLoaded.call(this, $adCollection);
                 }
+                
+                /* responsive ad hack */ 
+                
+                var slotId = event.slot.getSlotId();
+                var id = 'google_ads_iframe_' + slotId.getName() + '_' + slotId.getInstance();
+                //console.info('Init:', id, 'reporting size is', event.size[0], 'x', event.size[1]);                
+                var timer;
+                resizeAds(id);
 
+                window.addEventListener('resize', function (event) {
+                    if (timer) {
+                        window.clearTimeout(timer);
+                    }
+
+                    timer = window.setTimeout(function () {
+
+                        resizeAds(id);
+
+                    }, 250);
+                });
+               /* end responsive ad hack */ 
             });
 
             window.googletag.enableServices();
@@ -310,6 +341,47 @@
 
         });
 
+    },
+    
+  //Function for resizing ads                 
+    resizeAds = function (id) {
+    	
+        var el = document.getElementById(id),
+            elW = el.getAttribute("width"),
+            elH = el.getAttribute("height");
+        //console.log('Resize:' + id + ' reporting size is ' +  el.getAttribute("width") + 'x' +  el.getAttribute("height"));                                    
+        //Calculate the scale that we need to downsize the ad. The extra 30 subtracted from the window width is for padding.   
+
+        if( window.innerWidth >= 980 ){
+        	var scale = (100 * ((980 - 30)/ elW)) / 100; 
+        }
+        else{
+        	var scale = (100 * ((window.innerWidth - 30) / elW)) / 100;
+        }        
+        
+        var height = elH * scale;
+        height = Math.round(height);
+
+        if (el && height != 0) {
+
+            //Scale the ad to the correct size
+            el.style['-webkit-transform'] = 'scale(' + scale + ')';
+            el.style['-moz-transform'] = 'scale(' + scale + ')';
+            el.style['-ms-transform'] = 'scale(' + scale + ')';
+            el.style['transform'] = 'scale(' + scale + ')';
+            el.style['-webkit-transform-origin'] = 'left top';
+            el.style['-moz-transform-origin'] = 'left top';
+            el.style['-ms-transform-origin'] = 'left top';
+            el.style['transform-origin'] = 'left top';
+            //Set the height of the ads parent element to remove unwanted whitespace                                            
+            //CSS will take care of this? (Audun)
+            el.parentNode.style['height'] = height + 'px';
+            el.parentNode.style['max-height'] = height + 'px';
+
+            //Add negative margin-bottom to position the border beneath the ad correctly
+            el.style['margin-bottom'] = -(elH - height - 20) + 'px';
+            //console.info('Resize: el height is now set to', el.parentNode.style.height);
+        }
     },
 
     /**
